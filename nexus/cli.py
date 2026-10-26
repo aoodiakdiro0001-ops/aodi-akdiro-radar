@@ -11,7 +11,7 @@ import sys
 import tempfile
 import threading
 
-from . import __version__, profiler, runner, storage
+from . import __version__, license as license_mod, profiler, runner, server as server_mod, storage
 
 
 def _print_help_meta(parser):
@@ -153,6 +153,35 @@ def cmd_demo(args):
     return 0
 
 
+def cmd_serve(args):
+    httpd, cs = server_mod.serve(port=args.port, host=args.host,
+                                 ledger_path=args.ledger)
+    printed = "127.0.0.1" if args.host in ("0.0.0.0", "") else args.host
+    url = "http://%s:%d" % (printed, httpd.server_port or args.port)
+    print("Akdiro-Radar control surface  →", url)
+    print("dashboard                     →", url + "/")
+    print("Prometheus                    →", url + "/api/metrics")
+    print("POST /api/run token           →", cs.token)
+    print("(all runs must come from a manifest with authorization.declared=true)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def cmd_activate(args):
+    res = license_mod.activate(args.license)
+    print(json.dumps(res, ensure_ascii=False, indent=2))
+    return 0 if res.get("ok") else 1
+
+
+def cmd_license(args):
+    st = license_mod.current_status()
+    print(json.dumps(st, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="nexusctl",
                                  description="Akdiro-Radar orchestrator")
@@ -183,6 +212,16 @@ def main(argv=None):
     p = sub.add_parser("demo", help="offline self-demo against a local stub")
     p.add_argument("--out", default="demo/out")
     p.set_defaults(fn=cmd_demo)
+    p = sub.add_parser("serve", help="local control surface + dashboard + Prometheus")
+    p.add_argument("--port", type=int, default=9470)
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--ledger", default="radar-ledger.db")
+    p.set_defaults(fn=cmd_serve)
+    p = sub.add_parser("activate", help="install a signed license token")
+    p.add_argument("license", help="path to the .lic file you received")
+    p.set_defaults(fn=cmd_activate)
+    p = sub.add_parser("license", help="print current license status")
+    p.set_defaults(fn=cmd_license)
     args = ap.parse_args(argv)
     if not getattr(args, "fn", None):
         _print_help_meta(ap)

@@ -52,7 +52,7 @@ tampered ledger → `{"ok": false, "broken_at_idx": 1}`
 ## Quickstart
 
 ```bash
-python3 -m unittest discover tests   # 20 offline tests, green
+python3 -m unittest discover tests   # 34 offline tests, green
 python3 -m nexus.cli demo            # local stub server, zero internet
 python3 -m nexus.cli init --path targets.local.json
 python3 -m nexus.cli probe http://your-target/
@@ -60,6 +60,26 @@ python3 -m nexus.cli run targets.local.json --ledger radar-ledger.db
 python3 -m nexus.cli report radar-ledger.db --out REPORT.md
 python3 -m nexus.cli verify radar-ledger.db
 ```
+
+### Embed in your app — 3 lines
+
+```python
+from nexus.sdk import orchestrate
+result = orchestrate("targets.local.json", "radar-ledger.db", workers=4)
+print(result.summary["pages"], "sealed:", result.seal)
+```
+
+### Or run the control surface + dashboard + Prometheus
+
+```bash
+python3 -m nexus.cli serve --port 9470     # POST-run token prints once
+```
+
+Open http://127.0.0.1:9470/ — Arabic RTL panel with live meters, per-host
+table, findings feed and a token-guarded run button. `/api/metrics` is
+Prometheus text format (scrape it directly); `/api/report` serves the
+markdown receipt. Full endpoint table + Python/Go/curl 3-liners: **docs/API.md**.
+
 
 ### Manifest (honesty is load-bearing)
 
@@ -88,8 +108,31 @@ export RADAR_RELAYS="http://user:pass@anyip-host:port,http://user:pass@backup:po
 A relay is rotated **only** after a network-level failure (DNS/timeout/refused)
 — never as a reaction to being blocked. Tests pin this distinction.
 
-## What it finds today
+![Akdiro-Radar live dashboard](assets/dashboard.png)
 
+## Concurrency (B2B reality, honestly)
+
+`run_concurrent(workers=N)` parallelizes **across hosts** on a thread pool
+while each host keeps its own bucket — politeness per host is never stacked
+against itself; the seal chain stays intact under threads (RLock-guarded,
+test-pinned). Honest limit: meters are in-process view; run one shard per
+bunch of targets and scrape each `/api/metrics`.
+
+## Licensing (paid build, stated plainly)
+
+`Gumroad` buyers receive an HMAC-SHA256 license token bound to buyer email:
+
+```bash
+nexusctl activate baran.lic && nexusctl license
+```
+
+Verification is offline; no phone-home, ever. The repo itself is MIT
+open-source, so the checker is a sales-agreement enforcer, not a crypto
+fence — unlicensed copies stay fully functional and every generated report
+labels itself **UNLICENSED COPY** until activated. We would rather sell
+receipts than lie about lock strength.
+
+## What it finds today
 Security-posture facts from pages in scope: missing `CSP`/`HSTS`/
 `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/
 `Permissions-Policy`, versioned `Server` headers. That is honest headcount,

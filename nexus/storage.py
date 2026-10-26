@@ -1,11 +1,14 @@
 """Append-only receipts ledger with a sha256 seal chain (prev-hash binding).
 
-Every probe, page pull, skip and finding is sealed. Rewriting any historical
-row breaks the chain and `verify()` pinpoints the exact forged index.
+Thread-safe as of v1.1: one RLock guards every connection operation so the
+concurrent runner may fill the same chain from several workers without ever
+tearing a row. Rewriting any historical row breaks the chain, `verify()`
+pinpoints the exact forged index.
 """
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 
 _SCHEMA = """
@@ -31,55 +34,64 @@ def _link_hash(kind, data, prev):
 class Ledger(object):
     def __init__(self, path):
         self.path = path
-        self.conn = sqlite3.connect(path)
-        self.conn.executescript(_SCHEMA)
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.lock = threading.RLock()
+        with self.lock:
+            self.conn.executescript(_SCHEMA)
 
+    # ------------------------------------------------------------ append
     def append(self, kind, data):
-        row = self.conn.execute(
-            "SELECT hash FROM ledger ORDER BY idx DESC LIMIT 1").fetchone()
-        prev = row[0] if row else GENESIS
-        data_json = json.dumps(data, sort_keys=True, ensure_ascii=False)
-        mh = _link_hash(kind, data, prev)
-        with self.conn:
-            self.conn.execute(
-                "INSERT INTO ledger (ts, kind, data, prev, hash) VALUES (?,?,?,?,?)",
-                (time.time(), kind, data_json, prev, mh))
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT hash FROM ledger ORDER BY idx DESC LIMIT 1").fetchone()
+            prev = row[0] if row else GENESIS
+            data_json = json.dumps(data, sort_keys=True, ensure_ascii=False)
+            mh = _link_hash(kind, data, prev)
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO ledger (ts, kind, data, prev, hash) VALUES (?,?,?,?,?)",
+                    (time.time(), kind, data_json, prev, mh))
         return mh
 
+    # ------------------------------------------------------------ reads
     def count(self):
-        return self.conn.execute("SELECT COUNT(*) FROM ledger").fetchone()[0]
+        with self.lock:
+            return self.conn.execute("SELECT COUNT(*) FROM ledger").fetchone()[0]
 
     def kinds(self):
-        rows = self.conn.execute(
-            "SELECT kind, COUNT(*) FROM ledger GROUP BY kind ORDER BY kind")
-        return {k: n for k, n in rows}
-
-    def verify(self):
-        prev = GENESIS
-        for idx, ts, kind, data, lprev, lhash in self.conn.execute(
-                "SELECT idx, ts, kind, data, prev, hash FROM ledger ORDER BY idx"):
-            if lprev != prev:
-                return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
-            try:
-                want = _link_hash(kind, json.loads(data), lprev)
-            except ValueError:
-                return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
-            if want != lhash:
-                return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
-            prev = lhash
-        return {"ok": True, "rows": self.count()}
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT kind, COUNT(*) FROM ledger GROUP BY kind ORDER BY kind")
+            return {k: n for k, n in rows}
 
     def findings(self):
-        rows = self.conn.execute(
-            "SELECT data FROM ledger WHERE kind='finding' ORDER BY idx")
-        out = []
-        for (dj,) in rows:
-            out.append(json.loads(dj))
-        return out
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT data FROM ledger WHERE kind='finding' ORDER BY idx")
+            return [json.loads(dj) for (dj,) in rows]
 
     def rows(self):
-        return self.conn.execute(
-            "SELECT idx, ts, kind, data, prev, hash FROM ledger ORDER BY idx").fetchall()
+        with self.lock:
+            return self.conn.execute(
+                "SELECT idx, ts, kind, data, prev, hash FROM ledger ORDER BY idx"
+            ).fetchall()
+
+    def verify(self):
+        with self.lock:
+            prev = GENESIS
+            for idx, ts, kind, data, lprev, lhash in self.conn.execute(
+                    "SELECT idx, ts, kind, data, prev, hash FROM ledger ORDER BY idx"):
+                if lprev != prev:
+                    return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
+                try:
+                    want = _link_hash(kind, json.loads(data), lprev)
+                except ValueError:
+                    return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
+                if want != lhash:
+                    return {"ok": False, "broken_at_idx": idx, "rows": self.count()}
+                prev = lhash
+            return {"ok": True, "rows": self.count()}
 
     def close(self):
-        self.conn.close()
+        with self.lock:
+            self.conn.close()

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Akdiro Radar — لوحة الحياة</title>
+<style>
+:root{--bg:#0b0f16;--panel:#121826;--line:#1f2937;--fg:#e5ecf6;--sub:#7d8ba3;
+--ok:#29e07b;--warn:#f5a623;--bad:#ff5470;--acc:#57b6ff;--mono:ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font-family:-apple-system,"Segoe UI",Tahoma,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:18px 14px}
+header h1{margin:.2em 0;font-size:1.5rem}
+header p{margin:0;color:var(--sub);font-size:.85rem}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.72rem;
+border:1px solid var(--line);margin-inline-start:.4em;color:var(--sub)}
+.badge.ok{color:var(--ok);border-color:var(--ok)} .badge.bad{color:var(--bad);border-color:var(--bad)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:12px 14px} .card b{font-size:1.35rem;font-family:var(--mono)}
+.card span{display:block;color:var(--sub);font-size:.72rem;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:.85rem;background:var(--panel);
+border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+th{color:var(--sub);font-weight:600;font-size:.75rem}
+td code{font-family:var(--mono);font-size:.78rem;color:var(--acc)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:14px}
+.panel h2{font-size:.95rem;margin:0 0 10px}
+input,button{font:inherit;border-radius:8px;border:1px solid var(--line);
+background:#0e1420;color:var(--fg);padding:7px 10px}
+input{width:290px}
+button{cursor:pointer;background:var(--acc);color:#04131f;border-color:var(--acc);font-weight:700}
+button:disabled{opacity:.5;cursor:default}
+.find{padding:6px 0;border-bottom:1px dashed var(--line);font-size:.82rem}
+.find b{font-family:var(--mono)}
+.mut{color:var(--sub);font-size:.75rem}
+a{color:var(--acc)}
+#log{font-family:var(--mono);font-size:.75rem;color:var(--sub);white-space:pre-wrap;max-height:110px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎯 Akdiro Radar — لوحة الحياة <span class="badge" id="ver">v…</span>
+      <span class="badge" id="license">…</span></h1>
+    <p>Sovereign polite orchestrator · كل طلب وراء إيصال مختوم · localhost only</p>
+  </header>
+
+  <div class="row">
+    <div class="card"><b id="c_pages">–</b><span>صفحات مسروقة ناعماً</span></div>
+    <div class="card"><b id="c_findings">–</b><span>موقفات posture</span></div>
+    <div class="card"><b id="c_blocks">–</b><span>حجوب 401/403</span></div>
+    <div class="card"><b id="c_net">–</b><span>فشل شبكة</span></div>
+    <div class="card"><b id="c_seal">–</b><span>سلسلة الختم</span></div>
+    <div class="card"><b id="c_uptime">–</b><span>uptime (ث)</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>تشغيل مُصرّح — يتطلب رمز الحماية الظاهر عند إقلاع الخادم</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="manifest" placeholder="targets.local.json" value="targets.local.json"/>
+      <input id="token" placeholder="run-token" value=""/>
+      <label class="mut">عدد الصفحات <input id="maxp" type="number" value="4" min="1" max="50" style="width:70px"/></label>
+      <label class="mut">Workers <input id="workers" type="number" value="0" min="0" max="16" style="width:70px"/></label>
+      <button id="runBtn">🚀 شغّل</button>
+    </div>
+    <p class="mut">POST /api/run?token=… — الرمز يُطبع في الطرفية عند bootstrap — الخادم يلتصق بـ127.0.0.1 إلا غيّرتَه.</p>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel">
+    <h2>حالة المضيفين <span class="mut">(ميترز حيّة · يُحدَّث كل 2 ث)</span></h2>
+    <table><thead><tr>
+      <th>الهدف</th><th>ok</th><th>pressure</th><th>forbidden</th><th>net-fail</th><th>findings</th><th>skips</th>
+    </tr></thead><tbody id="hosts"><tr><td colspan="7" class="mut">لا بيانات — شغّل مسحاً</td></tr></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>آخر 25 موقف posture</h2>
+    <div id="finds" class="mut">–</div>
+  </div>
+
+  <p class="mut">حدة التحميل: <a href="/api/metrics" target="_blank">/api/metrics (Prometheus)</a> · <a href="/api/report" target="_blank">/api/report (إيصال)</a> · <a href="/api/status" target="_blank">/api/status</a></p>
+</div>
+<script>
+const $=(i)=>document.getElementById(i);
+function kv(name,labels){return name+"|"+labels.join("|")}
+async function tick(){
+  try{
+    const d=await (await fetch("/api/dashboard-data")).json();
+    $("ver").textContent="v"+d.version;
+    const lic=d.license||{};
+    $("license").textContent=lic.ok?("✓ "+lic.buyer+" · "+lic.tier):"UNLICENSED";
+    $("license").className="badge "+(lic.ok?"ok":"bad");
+    const s=d.status||{}, sum=s.summary||{}, m=d.meters||{}, c=m.counters||{};
+    const g=(nm)=>{let t=0;(c[nm]||new Map())&&Object.values(c[nm]||{}).forEach(v=>t+=v);return t};
+    $("c_pages").textContent=sum.pages??g("radar_requests_total");
+    $("c_findings").textContent=sum.findings??g("radar_findings_total");
+    $("c_blocks").textContent=g("radar_blocks_total");
+    $("c_net").textContent=g("radar_net_errors_total");
+    const seal=d.ledger||{};
+    $("c_seal").textContent=(seal.ok?"✓ ":"✗ ")+(seal.rows??0);
+    $("c_uptime").textContent=m.uptime_s??0;
+    // host table
+    const ht=d.host_table||{};
+    const rows=Object.entries(ht).map(([h,r])=>`<tr><td><code>${h}</code></td><td>${r.ok}</td><td>${r.pressure}</td><td>${r.forbidden}</td><td>${r.net}</td><td>${r.findings}</td><td class="mut">${JSON.stringify(r.skips)}</td></tr>`);
+    $("hosts").innerHTML=rows.join("")||'<tr><td colspan="7" class="mut">لا بيانات</td></tr>';
+    // findings
+    const fs=d.findings||[];
+    $("finds").innerHTML=fs.map(f=>`<div class="find"><b>[${f.severity}]</b> ${f.detail} — <span class="mut">${f.evidence}</span></div>`).join(" ")||"لا مواقف بعد";
+    // running state
+    $("log").textContent=s.status?(s.status.running?"⏳ مسح يعمل الآن… الذبيحة قادمة":(s.status.error?("⚠️ "+s.status.error):(s.status.summary?`✓ آخر مسح: pages=${s.status.summary.pages} findings=${s.status.summary.findings} wall=${s.status.summary.wall_s}s mode=${s.status.summary.mode}`:"خامل — لا مسح منذ إقلاع الخادم"))):"خامل";
+    $("runBtn").disabled=!!(s.status&&s.status.running);
+  }catch(e){$("log").textContent="⚠️ fetch failed: "+e}
+}
+$("runBtn").addEventListener("click",async()=>{
+  const body={manifest:$("manifest").value.trim(),max_pages:+$("maxp").value||4};
+  const w=+$("workers").value;if(w>0)body.workers=w;
+  const r=await fetch("/api/run?token="+encodeURIComponent($("token").value),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json();$("log").textContent=(r.ok?"🚀 انطلق ":"⚠️ "+(j.err||("HTTP "+r.status)));
+});
+tick(); setInterval(tick,2000);
+</script>
+</body>
+</html>

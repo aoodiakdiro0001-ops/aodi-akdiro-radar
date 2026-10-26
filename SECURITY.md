@@ -36,3 +36,13 @@ WhatsApp +90 531 326 37 22
 Using it against systems you are not authorized to test. Your manifest is
 self-attested; the waves of receipts are on you. Scan people/s you have
 permission for — politeness is enforced by code, permission is enforced by you.
+
+## Licensing enforcement — honest terms (v1.1)
+
+The `license.py` machinery (HMAC-SHA256 tokens, secret in the operator
+environment, never committed) enforces the *sale*, not secrecy of physics:
+the GitHub tree is MIT, so a determined user can stub the checker locally —
+that is a breach of the paid license terms, not a cryptographic guarantee.
+Unlicensed mode remains fully functional and receipts label it
+`UNLICENSED COPY`; activated tokens bind buyer email + expiry and are the
+basis for support entitlements.

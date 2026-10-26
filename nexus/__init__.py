@@ -10,4 +10,4 @@ Compliance-first by design:
 MIT (c) 2026 Baran Avisat
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
