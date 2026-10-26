@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+# nothing secret ever enters the tree
+.env
+.env.*
+*.key
+*.pem
+# local operational state
+targets.local.json
+*.db
+*.sqlite
+demo/out/

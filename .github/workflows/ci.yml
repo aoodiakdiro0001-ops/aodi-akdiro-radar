@@ -1,0 +1,21 @@
+name: Akdiro-Radar CI
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  tests:
+    # pinned: newer runner images ship no older python builds
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: compile all modules
+        run: python -m py_compile nexus/*.py
+      - name: offline test suite
+        run: python -m unittest discover tests -v

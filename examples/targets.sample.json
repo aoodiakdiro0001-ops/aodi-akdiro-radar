@@ -1,0 +1,7 @@
+{"targets": [
+  {
+    "base_url": "http://127.0.0.1:8000",
+    "notes": "your own local service — edit honestly",
+    "authorization": {"declared": true, "contact": "you@example.test"}
+  }
+]}
